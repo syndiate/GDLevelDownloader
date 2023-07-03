@@ -19,6 +19,10 @@ List of arguments and flags:
                                download to. Specify a non-zero integer (1+) to
                                download all comments until that page number, or
                                0 to download all pages.
+      -cr, --comment-rate-limit=<customCommentRateLim>
+                             Set a custom rate limit wait time for downloading
+                               multiple comment pages of a level in a single
+                               operation (default is 1 seconds).
   -d, --level                Download the level itself.
   -h, --help                 Show this help message and exit.
   -l, --leaderboards         Download the level's regular leaderboards.
@@ -28,6 +32,13 @@ List of arguments and flags:
       --nonexistent          Download non-existent levels.
   -p, --export-path=<exportPathStr>
                              Path to download level to.
+  -r, --rate-limit=<customRateLim>
+                             Set a custom rate limit wait time for downloading
+                               multiple levels in a single operation (default
+                               is 2.5 seconds). Be careful as if the rate limit
+                               is too low and you are downloading several
+                               levels, you will be blocked by the Geometry Dash
+                               servers.
   -V, --version              Print version information and exit.
       --wl, --weekly-leaderboards
                              Download the level's weekly leaderboards.

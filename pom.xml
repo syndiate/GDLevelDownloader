@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.syndiate.GJDownloader</groupId>
   <artifactId>GDLevelDownloader</artifactId>
-  <version>1.0.1</version>
+  <version>1.0.2</version>
   <name>GDLevelDownloader</name>
   <description>This is a utility designed to download the metadata, comments, and contents of any Geometry Dash level. Visit https://github.com/syndiate/GDLevelDownloader for more information.</description>
   <properties>

@@ -13,7 +13,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 
-@Command(name = "GDLevelDownloader", mixinStandardHelpOptions = true, version = "1.0.1",
+@Command(name = "GDLevelDownloader", mixinStandardHelpOptions = true, version = "1.0.2",
 description = "This is a utility designed to download the metadata, comments, and contents of any Geometry Dash level. Visit https://github.com/syndiate/GDLevelDownloader for more information.")
 public class Main implements Runnable {
 	
@@ -38,8 +38,7 @@ public class Main implements Runnable {
     private boolean comments;
 	
 	@Option(names = {"-cp", "--comments-page"}, description = "Specifies which page of the level's comments to download to. Specify a non-zero integer (1+) to download all comments until that page number, or 0 to download all pages.")
-	private String commentPageStr;
-	private int commentPage;
+	private Integer commentPage;
 	
 	@Option(names = {"--level-id"}, description = "The ID of the level you wish to download.")
     private int levelId;
@@ -50,10 +49,19 @@ public class Main implements Runnable {
 	@Option(names = {"--nonexistent"}, description = "Download non-existent levels.")
 	private boolean nonexistent;
 	
+	@Option(names = {"-r", "--rate-limit"}, description = "Set a custom rate limit wait time for downloading multiple levels in a single operation (default is 2.5 seconds). Be careful as if the rate limit is too low and you are downloading several levels, you will be blocked by the Geometry Dash servers.")
+	private Integer customRateLim;
+	
+	@Option(names = {"-cr", "--comment-rate-limit"}, description = "Set a custom rate limit wait time for downloading multiple comment pages of a level in a single operation (default is 1 seconds).")
+	private Integer customCommentRateLim;
 	
 	
-	private final int rateLimitWait = 4000;
-	private final int commentRateLimitWait = 2000;
+	
+	private final int defRateLim = 2500;
+	private final int defCommentRateLim = 1000;
+	
+	private int rateLim = defRateLim;
+	private int commentRateLim = defCommentRateLim;
 	
 	
 	
@@ -71,7 +79,7 @@ public class Main implements Runnable {
 	
 	
 	public void run() {
-        
+
 		
 		if (levelId != 0 && levelIds != null) {
 			System.out.println("You cannot specify both a single level ID and a range of level IDs. Check --help for more information.");
@@ -97,60 +105,60 @@ public class Main implements Runnable {
 			System.out.println("GDLevelDownloader cannot access the file path specified. You may need to run it as an administrator.");
 			return;
 		}
-		
-		if (comments) {
-			
-			if (commentPageStr == null) {
-				System.out.println("You must specify a page at which GDLevelDownloader will stop downloading the level(s)'s comments. Check --help for more information.");
-				return;
-			}
-			if (!commentPageStr.matches("^-?\\d+$")) {
-				System.out.println("The page provided is not a valid integer.");
-				return;
-			}
-			commentPage = Integer.parseInt(commentPageStr);
-			commentPage = commentPage == 0 ? Integer.MAX_VALUE : commentPage;
-			
+		if (comments && commentPage == null) {
+			System.out.println("You must specify a page at which GDLevelDownloader will stop downloading the level(s)'s comments. Check --help for more information.");
+			return;
 		}
+		
+		
+		if (customRateLim != null) {
+			rateLim = customRateLim;
+		}
+		if (customCommentRateLim != null) {
+			commentRateLim = customCommentRateLim;
+		}
+		if (commentPage == 0) {
+			commentPage = Integer.MAX_VALUE;
+		}
+		
+		
+		
 		System.out.println("\n\n");
-		
-		
-		
-		
-		
-		
 		if (levelIds == null) {
 			writeLevelData(levelId);
 			return;
 		}
+		
+		
+		
+		
+		
+		
 			
 			
 		
-		int[] levelIDRange = new int[2];
 		String[] suppliedLevelIDs = levelIds.replaceAll("[\\[\\]]", "").split("-");
-
 		
 		if (suppliedLevelIDs.length != 2) {
 			System.out.println("You did not specify 2 level IDs correctly using the [(id1)-(id2)] format. Check --help for more information.");
 			return;
 		}
+		
+		String id1Str = suppliedLevelIDs[0];
+		String id2Str = suppliedLevelIDs[1];
 
 		
-		String id1 = suppliedLevelIDs[0];
-		String id2 = suppliedLevelIDs[1];
-
-		
-		if (!id1.matches("^-?\\d+$") || !id2.matches("^-?\\d+$")) {
+		if (!id1Str.matches("^-?\\d+$") || !id2Str.matches("^-?\\d+$")) {
 			System.out.println("One or both of the level IDs specified are not valid integers.");
 			return;
 		}
 
 		
-		levelIDRange[0] = Integer.parseInt(id1);
-		levelIDRange[1] = Integer.parseInt(id2);
+		int id1 = Integer.parseInt(id1Str);
+		int id2 = Integer.parseInt(id2Str);
 
 		
-		for (int i = levelIDRange[0]; i <= levelIDRange[1]; i++) {
+		for (int i = id1; i <= id2; i++) {
 
 			System.out.println("\n\n");
 			System.out.println("Level ID: " + String.valueOf(i));
@@ -159,7 +167,7 @@ public class Main implements Runnable {
 			
 			// wait between downloading a level since robtop's servers are rate limited
 			try {
-				Thread.sleep(rateLimitWait);
+				Thread.sleep(rateLim);
 			} catch (InterruptedException ex) {
 				System.out.println(".....How does this even happen?");
 				ex.printStackTrace();
@@ -257,7 +265,7 @@ public class Main implements Runnable {
 				
 				// i dont know if gdbrowser is rate limited or not, but nonetheless, id rather just not flood the server with comment reqs
 				try {
-					Thread.sleep(commentRateLimitWait);
+					Thread.sleep(commentRateLim);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
