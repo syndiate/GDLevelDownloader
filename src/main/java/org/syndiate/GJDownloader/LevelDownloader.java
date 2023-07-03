@@ -52,7 +52,6 @@ public class LevelDownloader {
         httpPost.setHeader("User-Agent", "");
         httpPost.setHeader("Content-Type", "application/x-www-form-urlencoded");
 
-        
         String response = reqClient.execute(httpPost, reqHandler);
         return response;
         

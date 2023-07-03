@@ -13,7 +13,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 
-@Command(name = "GDLevelDownloader", mixinStandardHelpOptions = true, version = "1.0",
+@Command(name = "GDLevelDownloader", mixinStandardHelpOptions = true, version = "1.0.1",
 description = "This is a utility designed to download the metadata, comments, and contents of any Geometry Dash level. Visit https://github.com/syndiate/GDLevelDownloader for more information.")
 public class Main implements Runnable {
 	
@@ -38,6 +38,7 @@ public class Main implements Runnable {
     private boolean comments;
 	
 	@Option(names = {"-cp", "--comments-page"}, description = "Specifies which page of the level's comments to download to. Specify a non-zero integer (1+) to download all comments until that page number, or 0 to download all pages.")
+	private String commentPageStr;
 	private int commentPage;
 	
 	@Option(names = {"--level-id"}, description = "The ID of the level you wish to download.")
@@ -48,6 +49,11 @@ public class Main implements Runnable {
 	
 	@Option(names = {"--nonexistent"}, description = "Download non-existent levels.")
 	private boolean nonexistent;
+	
+	
+	
+	private final int rateLimitWait = 4000;
+	private final int commentRateLimitWait = 2000;
 	
 	
 	
@@ -90,6 +96,21 @@ public class Main implements Runnable {
 		if (!canUseFilePath(exportPathStr)) {
 			System.out.println("GDLevelDownloader cannot access the file path specified. You may need to run it as an administrator.");
 			return;
+		}
+		
+		if (comments) {
+			
+			if (commentPageStr == null) {
+				System.out.println("You must specify a page at which GDLevelDownloader will stop downloading the level(s)'s comments. Check --help for more information.");
+				return;
+			}
+			if (!commentPageStr.matches("^-?\\d+$")) {
+				System.out.println("The page provided is not a valid integer.");
+				return;
+			}
+			commentPage = Integer.parseInt(commentPageStr);
+			commentPage = commentPage == 0 ? Integer.MAX_VALUE : commentPage;
+			
 		}
 		System.out.println("\n\n");
 		
@@ -135,6 +156,14 @@ public class Main implements Runnable {
 			System.out.println("Level ID: " + String.valueOf(i));
 			System.out.println("=============================");
 			writeLevelData(i);
+			
+			// wait between downloading a level since robtop's servers are rate limited
+			try {
+				Thread.sleep(rateLimitWait);
+			} catch (InterruptedException ex) {
+				System.out.println(".....How does this even happen?");
+				ex.printStackTrace();
+			}
 
 		}
 		
@@ -197,7 +226,7 @@ public class Main implements Runnable {
 		}
 		
 		if (leaderboards) {
-			writeFile(exportPath + "/leaderboards.json", LevelDownloader.getMetadata(levelID), "leaderboards");
+			writeFile(exportPath + "/leaderboards.json", LevelDownloader.getRegularLeaderboards(levelID), "leaderboards");
 		}
 		
 		if (weeklyLeaderboards) {
@@ -217,11 +246,21 @@ public class Main implements Runnable {
 				String commentPgPath = commentExportPath + "/pg" + practicalPgNum + ".json";
 				String comments = LevelDownloader.getComments(levelID, i);
 				
-				if (comments.equals("")) {
+				if (comments == null) {
 					break;
 				}
+				if (comments.equals("") || comments.equals("-1")) {
+					break;
+				}
+				
 				writeFile(commentPgPath, comments, "comments (page " + practicalPgNum + ")");
 				
+				// i dont know if gdbrowser is rate limited or not, but nonetheless, id rather just not flood the server with comment reqs
+				try {
+					Thread.sleep(commentRateLimitWait);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
 			}
 			
 		}
