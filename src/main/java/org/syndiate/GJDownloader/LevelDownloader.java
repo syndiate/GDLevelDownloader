@@ -27,6 +27,7 @@ public class LevelDownloader {
 	private static final String metadataEndpoint = "https://gdbrowser.com/api/level/";
 	private static final String commentsEndpoint = "https://gdbrowser.com/api/comments/";
 	private static final String leaderboardEndpoint = "https://gdbrowser.com/api/leaderboardLevel/";
+	private static final String searchEndpoint = "https://gdbrowser.com/api/search/";
 	private static final String leaderboardEntryCount = "200";
 	
 	
@@ -94,6 +95,9 @@ public class LevelDownloader {
 		return handleGDBrowserRequest(commentsEndpoint + levelID + "?page=" + String.valueOf(page));
 	}
 	
+	public static boolean levelExists(String levelID) {
+		return !handleGDBrowserRequest(searchEndpoint + levelID).equals("-1");
+	}
 	
 	
 	
@@ -102,7 +106,6 @@ public class LevelDownloader {
 	@SuppressWarnings("deprecation")
 	public static Object[] checkRateLim() {
 		try {
-			
 			
 			
 			
@@ -122,7 +125,6 @@ public class LevelDownloader {
 					Boolean.valueOf(response.getCode() == 429),
 					response.getHeader("Retry-After").getValue() 
 			};
-	    
 
 			
 	    

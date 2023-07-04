@@ -13,13 +13,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 
-@Command(name = "GDLevelDownloader", mixinStandardHelpOptions = true, version = "1.0.3",
+@Command(name = "GDLevelDownloader", mixinStandardHelpOptions = true, version = "1.0.4",
 description = "This is a utility designed to download the metadata, comments, and contents of any Geometry Dash level. Visit https://github.com/syndiate/GDLevelDownloader for more information.")
 public class Main implements Runnable {
 	
@@ -55,7 +56,7 @@ public class Main implements Runnable {
 	@Option(names = {"--nonexistent"}, description = "Download non-existent levels.")
 	private boolean nonexistent;
 	
-	@Option(names = {"-r", "--rate-limit"}, description = "Set a custom rate limit wait time for downloading multiple levels in a single operation (default is 4 seconds). It is NOT recommended to wait for less than 4 seconds in between downloading multiple levels, as you will eventually be blocked by the GD servers if you're downloading several levels.")
+	@Option(names = {"-r", "--rate-limit"}, description = "Set a custom rate limit wait time for downloading multiple levels in a single operation (default is 5 seconds). It is NOT recommended to wait for less than 4 seconds in between downloading multiple/several levels, as you will eventually be blocked by the GD servers.")
 	private Integer customRateLim;
 	
 	@Option(names = {"-cr", "--comment-rate-limit"}, description = "Set a custom rate limit wait time for downloading multiple comment pages of a level in a single operation (default is 1 second).")
@@ -63,8 +64,10 @@ public class Main implements Runnable {
 	
 	
 	
+	
+	
 	private final int levelDownloadWait = 7000;
-	private final int defRateLim = 4000;
+	private final int defRateLim = 5000;
 	private final int defCommentRateLim = 1000;
 	
 	private int rateLim = defRateLim;
@@ -81,12 +84,18 @@ public class Main implements Runnable {
 	
 	
 	public static void main(String[] args) {
-        new CommandLine(new Main()).execute(args);
+        new Main(args);
     }
+	
+	public Main(String[] args) {
+		new CommandLine(this).execute(args);
+	}
 	
 	
 	public void run() {
 
+		
+		
 		
 		if (levelId != 0 && levelIds != null) {
 			System.out.println("You cannot specify both a single level ID and a range of level IDs. Check --help for more information.");
@@ -118,6 +127,7 @@ public class Main implements Runnable {
 		}
 		
 		
+		
 		if (customRateLim != null) {
 			rateLim = customRateLim;
 		}
@@ -130,9 +140,10 @@ public class Main implements Runnable {
 		
 		
 		
+		
 		System.out.println("\n\n");
 		if (levelIds == null) {
-			handleLevelDownload(levelId);
+			writeLevelData(levelId);
 			return;
 		}
 		
@@ -151,9 +162,10 @@ public class Main implements Runnable {
 			return;
 		}
 		
+		
 		String id1Str = suppliedLevelIDs[0];
 		String id2Str = suppliedLevelIDs[1];
-
+		
 		
 		if (!id1Str.matches("^-?\\d+$") || !id2Str.matches("^-?\\d+$")) {
 			System.out.println("One or both of the level IDs specified are not valid integers.");
@@ -161,24 +173,39 @@ public class Main implements Runnable {
 		}
 
 		
+		
 		int id1 = Integer.parseInt(id1Str);
 		int id2 = Integer.parseInt(id2Str);
-
+		
+		
 		
 		for (int i = id1; i <= id2; i++) {
 
+			
 			System.out.println("\n\n");
 			System.out.println("Level ID: " + String.valueOf(i));
 			System.out.println("=============================");
-			handleLevelDownload(i);
+			String result = writeLevelData(i);
 			
-			// wait between downloading a level since robtop's servers are rate limited
-			try {
-				Thread.sleep(rateLim);
-			} catch (InterruptedException ex) {
-				System.out.println(".....How does this even happen?");
-				ex.printStackTrace();
+			
+			switch (result) {
+			
+				case "rateLimited":
+					return;
+				case "levelDownloaded": {
+			
+					// wait between downloading a level since robtop's servers are rate limited
+					try {
+						Thread.sleep(rateLim);
+					} catch (InterruptedException ex) {
+						System.out.println(".....How does this even happen?");
+						ex.printStackTrace();
+					}
+					
+				}
+				
 			}
+			
 
 		}
 		
@@ -198,48 +225,9 @@ public class Main implements Runnable {
 	
 	
 	
-	public void handleLevelDownload(int lvlID) {
-		
-		ExecutorService executor = Executors.newSingleThreadExecutor();
-        Future<?> future = executor.submit(() -> {
-        	writeLevelData(lvlID);
-        });
-        
-        
-        try {
-            future.get(levelDownloadWait, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException | ExecutionException | TimeoutException e) {
-        	
-            
-        	Object[] rateLimData = LevelDownloader.checkRateLim();
-        	boolean isRateLimited = (Boolean) rateLimData[0];
-        	String waitTime = rateLimData[1].toString();
-        	
-        	
-        	if (isRateLimited) {
-        		System.out.println("You have been blocked by Geometry Dash's servers for sending too many requests/downloading too many levels in a short amount of time. Check back in " + waitTime + " seconds.");
-        		future.cancel(true);
-        		executor.shutdown();
-        		return;
-        	}
-        	
-        	System.out.println("The request is taking a really long time. Is your Internet connection working correctly?");
-            
-            
-        }
-        
-	}
 	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	public void writeLevelData(int lvlID) {
+	// Returns a "status code" depending on the result.
+	public String writeLevelData(int lvlID) {
 		
 		
 		String levelID = String.valueOf(lvlID);
@@ -248,32 +236,78 @@ public class Main implements Runnable {
 		exportPathFile.mkdirs();
 		
 		
-
+		
+		
+		
+		
 		if (downloadLevel) {
-
 			
-			String levelData = "";
-			try {
-				levelData = LevelDownloader.getRawLevel(levelID);
-			} catch (IOException e) {
-				System.out.println("An error occurred while retrieving the raw level data. Details:\n" + e.getMessage());
-			}
-			
-			
-			if ((!nonexistent && levelData.equals("-1")) || levelData.equals("")) {
-				exportPathFile.delete();
-				return;
-			}
-			
-			writeFile(exportPath + "/level.txt", levelData, "contents (the true, raw data)");
-			
-			if (levelData.equals("-1")) {
+			if (!LevelDownloader.levelExists(levelID)) {
+				
+				if (!nonexistent) {
+					exportPathFile.delete();
+					System.out.println("Skipping since the level doesn't exist and it wasn't specified to download nonexistent levels.");
+					return "levelNotDirectlyDownloaded";
+				}
+				
+				writeFile(exportPath + "/level.txt", "-1", "contents (the true, raw data)");
 				System.out.println("Not downloading anything else from the level since it doesn't exist.");
-				return;
+				return "levelNotDirectlyDownloaded";
+				
 			}
+
+			
+			
+			
+			AtomicReference<String> levelDataRef = new AtomicReference<>("");
+			
+			ExecutorService executor = Executors.newSingleThreadExecutor();
+			Future<?> future = executor.submit(() -> {
+				
+				try {
+					levelDataRef.set(LevelDownloader.getRawLevel(levelID));
+				} catch (IOException e) {
+					System.out.println("An error occurred while retrieving the raw level data. Details:\n" + e.getMessage());
+				}
+				
+			});
+			
 			
 
+			
+			try {
+				future.get(levelDownloadWait, TimeUnit.MILLISECONDS);
+			} catch (InterruptedException | ExecutionException | TimeoutException e) {
+				
+				
+
+				Object[] rateLimData = LevelDownloader.checkRateLim();
+				boolean isRateLimited = (Boolean) rateLimData[0];
+				String waitTime = rateLimData[1].toString();
+
+				
+				if (isRateLimited) {
+					System.out.println(
+							"You have been blocked by Geometry Dash's servers for sending too many requests/downloading too many levels in a short amount of time. Check back in "
+									+ waitTime + " seconds.");
+					future.cancel(true);
+					executor.shutdownNow();
+					return "rateLimited";
+				}
+				
+
+				
+				
+				System.out.println("The request is taking a really long time. Is your Internet connection working correctly?");
+			}
+			executor.shutdown();
+			writeFile(exportPath + "/level.txt", levelDataRef.get(), "contents (the true, raw data)");
+			
 		}
+		
+		
+		
+		
 		
 		
 		
@@ -288,6 +322,8 @@ public class Main implements Runnable {
 		if (weeklyLeaderboards) {
 			writeFile(exportPath + "/weekly-leaderboards.json", LevelDownloader.getWeeklyLeaderboards(levelID), "weekly leaderboards");
 		}
+		
+		
 		
 		
 		
@@ -318,14 +354,15 @@ public class Main implements Runnable {
 					e.printStackTrace();
 				}
 			}
-			
+
 		}
 		
 		
 		
-		
-		
+		return "levelDownloaded";
 	}
+	
+	
 	
 	
 	
@@ -339,13 +376,13 @@ public class Main implements Runnable {
 	        System.out.println("An error occurred while writing the level's " + writeComponent + ". Details: \n" + e.getMessage());
 	    }
 	}
-	
-	
 
 	
 	
 	
 	
+	
+
 	
 	
 	
