@@ -7,13 +7,19 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Paths;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 
-@Command(name = "GDLevelDownloader", mixinStandardHelpOptions = true, version = "1.0.2",
+@Command(name = "GDLevelDownloader", mixinStandardHelpOptions = true, version = "1.0.3",
 description = "This is a utility designed to download the metadata, comments, and contents of any Geometry Dash level. Visit https://github.com/syndiate/GDLevelDownloader for more information.")
 public class Main implements Runnable {
 	
@@ -49,15 +55,16 @@ public class Main implements Runnable {
 	@Option(names = {"--nonexistent"}, description = "Download non-existent levels.")
 	private boolean nonexistent;
 	
-	@Option(names = {"-r", "--rate-limit"}, description = "Set a custom rate limit wait time for downloading multiple levels in a single operation (default is 2.5 seconds). Be careful as if the rate limit is too low and you are downloading several levels, you will be blocked by the Geometry Dash servers.")
+	@Option(names = {"-r", "--rate-limit"}, description = "Set a custom rate limit wait time for downloading multiple levels in a single operation (default is 4 seconds). It is NOT recommended to wait for less than 4 seconds in between downloading multiple levels, as you will eventually be blocked by the GD servers if you're downloading several levels.")
 	private Integer customRateLim;
 	
-	@Option(names = {"-cr", "--comment-rate-limit"}, description = "Set a custom rate limit wait time for downloading multiple comment pages of a level in a single operation (default is 1 seconds).")
+	@Option(names = {"-cr", "--comment-rate-limit"}, description = "Set a custom rate limit wait time for downloading multiple comment pages of a level in a single operation (default is 1 second).")
 	private Integer customCommentRateLim;
 	
 	
 	
-	private final int defRateLim = 2500;
+	private final int levelDownloadWait = 7000;
+	private final int defRateLim = 4000;
 	private final int defCommentRateLim = 1000;
 	
 	private int rateLim = defRateLim;
@@ -117,7 +124,7 @@ public class Main implements Runnable {
 		if (customCommentRateLim != null) {
 			commentRateLim = customCommentRateLim;
 		}
-		if (commentPage == 0) {
+		if (commentPage != null && commentPage == 0) {
 			commentPage = Integer.MAX_VALUE;
 		}
 		
@@ -125,7 +132,7 @@ public class Main implements Runnable {
 		
 		System.out.println("\n\n");
 		if (levelIds == null) {
-			writeLevelData(levelId);
+			handleLevelDownload(levelId);
 			return;
 		}
 		
@@ -163,7 +170,7 @@ public class Main implements Runnable {
 			System.out.println("\n\n");
 			System.out.println("Level ID: " + String.valueOf(i));
 			System.out.println("=============================");
-			writeLevelData(i);
+			handleLevelDownload(i);
 			
 			// wait between downloading a level since robtop's servers are rate limited
 			try {
@@ -181,6 +188,47 @@ public class Main implements Runnable {
     }
 	
 	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	public void handleLevelDownload(int lvlID) {
+		
+		ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<?> future = executor.submit(() -> {
+        	writeLevelData(lvlID);
+        });
+        
+        
+        try {
+            future.get(levelDownloadWait, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException | ExecutionException | TimeoutException e) {
+        	
+            
+        	Object[] rateLimData = LevelDownloader.checkRateLim();
+        	boolean isRateLimited = (Boolean) rateLimData[0];
+        	String waitTime = rateLimData[1].toString();
+        	
+        	
+        	if (isRateLimited) {
+        		System.out.println("You have been blocked by Geometry Dash's servers for sending too many requests/downloading too many levels in a short amount of time. Check back in " + waitTime + " seconds.");
+        		future.cancel(true);
+        		executor.shutdown();
+        		return;
+        	}
+        	
+        	System.out.println("The request is taking a really long time. Is your Internet connection working correctly?");
+            
+            
+        }
+        
+	}
 	
 	
 	

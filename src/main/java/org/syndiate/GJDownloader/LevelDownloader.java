@@ -3,15 +3,20 @@ package org.syndiate.GJDownloader;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.hc.client5.http.classic.methods.HttpGet;
+import org.apache.hc.client5.http.classic.methods.HttpHead;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.entity.UrlEncodedFormEntity;
 import org.apache.hc.client5.http.impl.classic.BasicHttpClientResponseHandler;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.http.NameValuePair;
 import org.apache.hc.core5.http.message.BasicNameValuePair;
+import org.apache.hc.core5.util.Timeout;
 
 
 
@@ -32,6 +37,9 @@ public class LevelDownloader {
 	
 	private static final CloseableHttpClient reqClient = HttpClients.createDefault();
 	private static final BasicHttpClientResponseHandler reqHandler = new BasicHttpClientResponseHandler();
+	
+	
+	private static final int rateLimTimeout = 5000;
 	
 	
 	
@@ -58,7 +66,7 @@ public class LevelDownloader {
 	}
 	
 	
-	// sorry gd cologne, ill eventually migrate to using boomlings.com itself, but as it stands I truly don't have the time to program that in (because RobTop decided to make it as painful as possible to grab any sort of any information from
+	// sorry gd cologne, ill eventually migrate to using boomlings.com itself, but as it stands I truly don't have the time to program that in (because RobTop decided to make it as painful as possible to grab any sort of any information from)
 	
 	// thanks gd cologne for having the server return 500 when a level doesn't exist (????)
 	private static String handleGDBrowserRequest(String URL) {
@@ -84,6 +92,43 @@ public class LevelDownloader {
 	
 	public static String getComments(String levelID, int page) {
 		return handleGDBrowserRequest(commentsEndpoint + levelID + "?page=" + String.valueOf(page));
+	}
+	
+	
+	
+	
+	
+	// i dont care that its deprecated, there is no good documentation on using the new methods/classes to retrieve anything but the response string
+	@SuppressWarnings("deprecation")
+	public static Object[] checkRateLim() {
+		try {
+			
+			
+			
+			
+			CloseableHttpClient httpClient = HttpClients.custom()
+					.setDefaultRequestConfig(
+							RequestConfig.custom().setResponseTimeout(Timeout.of(rateLimTimeout, TimeUnit.MILLISECONDS)).build())
+					.build();
+
+			HttpHead req = new HttpHead(levelEndpoint);
+			req.setHeader("User-Agent", "");
+
+			CloseableHttpResponse response = httpClient.execute(req);
+			response.getHeader("Retry-After").getValue();
+
+			
+			return new Object[] { 
+					Boolean.valueOf(response.getCode() == 429),
+					response.getHeader("Retry-After").getValue() 
+			};
+	    
+
+			
+	    
+		} catch (Exception e) {
+			return new Object[] { Boolean.valueOf(true), "??????" };
+		}
 	}
 	
 
