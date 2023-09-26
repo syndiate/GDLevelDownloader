@@ -9,7 +9,9 @@ class LevelDownloaderTest {
 	// run only when you're actually rate limited
 	@Test
 	void rateLimTest() {
-		assertTrue(((Boolean) LevelDownloader.checkRateLim()[0]));
+		if (((Boolean) LevelDownloader.checkRateLim()[0])) {
+			System.out.println("HEY\n\\n\\n\\n\\nRATE LIMITED");
+		}
 		System.out.println(LevelDownloader.checkRateLim()[1]);
 	}
 	

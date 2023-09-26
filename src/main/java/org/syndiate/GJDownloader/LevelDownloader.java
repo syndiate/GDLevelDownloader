@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.hc.client5.http.HttpResponseException;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.classic.methods.HttpHead;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
@@ -14,6 +15,7 @@ import org.apache.hc.client5.http.impl.classic.BasicHttpClientResponseHandler;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.NameValuePair;
 import org.apache.hc.core5.http.message.BasicNameValuePair;
 import org.apache.hc.core5.util.Timeout;
@@ -40,7 +42,7 @@ public class LevelDownloader {
 	private static final BasicHttpClientResponseHandler reqHandler = new BasicHttpClientResponseHandler();
 	
 	
-	private static final int rateLimTimeout = 5000;
+	private static final int rateLimTimeout = 30000;
 	
 	
 	
@@ -66,7 +68,6 @@ public class LevelDownloader {
         
 	}
 	
-	
 	// sorry gd cologne, ill eventually migrate to using boomlings.com itself, but as it stands I truly don't have the time to program that in (because RobTop decided to make it as painful as possible to grab any sort of any information from)
 	
 	// thanks gd cologne for having the server return 500 when a level doesn't exist (????)
@@ -74,7 +75,7 @@ public class LevelDownloader {
 		try {
 			return reqClient.execute(new HttpGet(URL), reqHandler);
 		} catch (IOException ex) {
-			return "-1";
+			return (ex instanceof HttpResponseException) ? "-1" : "-2";
 		}
 	}
 	
@@ -118,12 +119,12 @@ public class LevelDownloader {
 			req.setHeader("User-Agent", "");
 
 			CloseableHttpResponse response = httpClient.execute(req);
-			response.getHeader("Retry-After").getValue();
+			Header retryAfterHeader = response.getHeader("Retry-After");
 
 			
 			return new Object[] { 
 					Boolean.valueOf(response.getCode() == 429),
-					response.getHeader("Retry-After").getValue() 
+					(retryAfterHeader != null ? retryAfterHeader.getValue() : "??????")
 			};
 
 			
@@ -131,6 +132,24 @@ public class LevelDownloader {
 		} catch (Exception e) {
 			return new Object[] { Boolean.valueOf(true), "??????" };
 		}
+	}
+	
+	
+	
+	
+	public static boolean hasNet() {
+		try {
+			reqClient.execute(new HttpHead("https://www.google.com"), reqHandler);
+			return true;
+		} catch (IOException ex) {
+			return false;
+		}
+	}
+	
+	
+	
+	public static boolean gdBrowserConnectivity() {
+		return handleGDBrowserRequest("").equals("-2");
 	}
 	
 

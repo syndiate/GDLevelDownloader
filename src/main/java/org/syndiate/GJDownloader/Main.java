@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -14,6 +16,12 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+
+import org.apache.hc.client5.http.classic.methods.HttpGet;
+import org.apache.hc.client5.http.impl.classic.BasicHttpClientResponseHandler;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+
+import com.google.gson.Gson;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -66,13 +74,22 @@ public class Main implements Runnable {
 	
 	
 	
-	private final int levelDownloadWait = 7000;
+	private final int levelDownloadWait = 30000;
+	private final int netWait = 10000;
 	private final int defRateLim = 5000;
 	private final int defCommentRateLim = 1000;
+	
+	private final int maxDownloadRetries = 3;
+	private final int maxNetRetries = 100;
 	
 	private int rateLim = defRateLim;
 	private int commentRateLim = defCommentRateLim;
 	
+	private int downloadAttempts = 0;
+	private volatile int currLevelId = 0;
+	
+	private final String updateURL = "https://api.github.com/repos/syndiate/GDLevelDownloader/releases/latest";
+	private final String currVersion = "v1.0.5";
 	
 	
 	
@@ -142,6 +159,11 @@ public class Main implements Runnable {
 		
 		
 		System.out.println("\n\n");
+		if (checkForUpdates()) {
+			System.out.println("There's a new update available! Go to https://github.com/syndiate/GDLevelDownloader/releases/latest to download it.");
+		}
+		
+		System.out.println("\n\n");
 		if (levelIds == null) {
 			writeLevelData(levelId);
 			return;
@@ -179,8 +201,11 @@ public class Main implements Runnable {
 		
 		
 		
+		HashMap<Integer, Integer> retryData = new HashMap<>();
 		for (int i = id1; i <= id2; i++) {
 
+			
+			this.currLevelId = i;
 			
 			System.out.println("\n\n");
 			System.out.println("Level ID: " + String.valueOf(i));
@@ -190,18 +215,37 @@ public class Main implements Runnable {
 			
 			switch (result) {
 			
+				// check connectivity
+				case "downloadFailed": {
+					
+					
+					if (retryData.get(i) >= maxDownloadRetries) {
+						System.out.println("Either GDBrowser or the GD servers are down, or your Internet connection is currently extremely unstable. Shutting down.");
+						cancel();
+						return;
+					}
+					
+					
+					System.out.println("Testing and/or waiting for an Internet connection...");
+					if (!waitForNet()) {
+						System.out.println("After waiting and retrying for " + (netWait * maxNetRetries) + " seconds, it can be said that your Internet connection appears to be completely disabled. Shutting down.");
+						cancel();
+						return;
+					}
+					
+					
+					retryData.put(i, retryData.get(i).intValue() + 1); 		i--;
+					System.out.println("Internet connection found. Attempting the download process for this level again.");
+					break;
+					
+					
+				}
 				case "rateLimited":
 					return;
 				case "levelDownloaded": {
-			
 					// wait between downloading a level since robtop's servers are rate limited
-					try {
-						Thread.sleep(rateLim);
-					} catch (InterruptedException ex) {
-						System.out.println(".....How does this even happen?");
-						ex.printStackTrace();
-					}
-					
+					sleep(rateLim);
+					break;
 				}
 				
 			}
@@ -210,12 +254,44 @@ public class Main implements Runnable {
 		}
 		
 		
-		
+
 		
     }
 	
 	
 	
+	
+	private void cancel() {
+		
+		File exportPath = new File(exportPathStr + "/" + currLevelId);
+		
+		File[] contents = exportPath.listFiles();
+        if (contents == null) {
+        	exportPath.delete();
+        	return;
+        }
+        for (File file : contents) {
+        	file.delete();
+        }
+        
+        exportPath.delete();
+        
+	}
+	
+	
+	
+	
+	
+	// the most beautifully horrible two lines you'll ever see
+	@SuppressWarnings("unchecked")
+	public boolean checkForUpdates() {
+		try {
+			String releaseData = HttpClients.createDefault().execute(new HttpGet(this.updateURL), new BasicHttpClientResponseHandler());
+			return !((Map<String, String>) new Gson().fromJson(releaseData, Object.class)).get("tag_name").equals(this.currVersion);
+		} catch (IOException e) {
+			return false;
+		}
+	}
 	
 	
 	
@@ -230,6 +306,7 @@ public class Main implements Runnable {
 	public String writeLevelData(int lvlID) {
 		
 		
+		
 		String levelID = String.valueOf(lvlID);
 		String exportPath = exportPathStr + "/" + levelID;
 		File exportPathFile = new File(exportPath);
@@ -237,6 +314,10 @@ public class Main implements Runnable {
 		
 		
 		
+		if (!LevelDownloader.gdBrowserConnectivity()) {
+			return "downloadFailed";
+		}
+
 		
 		
 		
@@ -295,10 +376,18 @@ public class Main implements Runnable {
 					return "rateLimited";
 				}
 				
-
 				
 				
-				System.out.println("The request is taking a really long time. Is your Internet connection working correctly?");
+				downloadAttempts++;
+				if (downloadAttempts < maxDownloadRetries) {
+					System.out.println("Request timed out. Redownloading level.");
+					return writeLevelData(lvlID);
+				}
+				
+				System.out.println("Attempted to download level 3 times to no avail.");
+				return "downloadFailed";
+				
+				
 			}
 			executor.shutdown();
 			writeFile(exportPath + "/level.txt", levelDataRef.get(), "contents (the true, raw data)");
@@ -348,11 +437,7 @@ public class Main implements Runnable {
 				writeFile(commentPgPath, comments, "comments (page " + practicalPgNum + ")");
 				
 				// i dont know if gdbrowser is rate limited or not, but nonetheless, id rather just not flood the server with comment reqs
-				try {
-					Thread.sleep(commentRateLim);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
+				sleep(commentRateLim);
 			}
 
 		}
@@ -362,6 +447,31 @@ public class Main implements Runnable {
 		return "levelDownloaded";
 	}
 	
+	
+	
+	
+	public boolean waitForNet() {
+		
+		for (int netRetries = 0; netRetries <= maxNetRetries; netRetries++) {
+			
+			if (LevelDownloader.hasNet()) {
+				return true;
+			}
+			
+			try {
+				Thread.sleep(netWait);
+			} catch (InterruptedException notGoingToHappenEx) {}
+			
+			continue;
+			
+		}
+		return false;
+		
+	}
+	
+	
+	
+
 	
 	
 	
@@ -376,8 +486,6 @@ public class Main implements Runnable {
 	        System.out.println("An error occurred while writing the level's " + writeComponent + ". Details: \n" + e.getMessage());
 	    }
 	}
-
-	
 	
 	
 	
@@ -404,6 +512,17 @@ public class Main implements Runnable {
 	public boolean canUseFilePath(String filePath) {
         return Files.isReadable(Paths.get(filePath)) && Files.isWritable(Paths.get(filePath));
     }
+	
+	
+	
+	
+	public void sleep(int ms) {
+		try {
+			Thread.sleep(ms);
+		} catch (InterruptedException theHolyException) {
+			theHolyException.printStackTrace();
+		}
+	}
 	
 	
 }
