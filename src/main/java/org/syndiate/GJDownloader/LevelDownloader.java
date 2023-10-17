@@ -1,6 +1,8 @@
 package org.syndiate.GJDownloader;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -14,8 +16,12 @@ import org.apache.hc.client5.http.entity.UrlEncodedFormEntity;
 import org.apache.hc.client5.http.impl.classic.BasicHttpClientResponseHandler;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.routing.DefaultProxyRoutePlanner;
+import org.apache.hc.client5.http.routing.HttpRoutePlanner;
 import org.apache.hc.core5.http.Header;
+import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.NameValuePair;
 import org.apache.hc.core5.http.message.BasicNameValuePair;
 import org.apache.hc.core5.util.Timeout;
@@ -26,10 +32,11 @@ public class LevelDownloader {
 	
 	
 	private static final String levelEndpoint = "http://www.boomlings.com/database/downloadGJLevel22.php";
-	private static final String metadataEndpoint = "https://gdbrowser.com/api/level/";
-	private static final String commentsEndpoint = "https://gdbrowser.com/api/comments/";
-	private static final String leaderboardEndpoint = "https://gdbrowser.com/api/leaderboardLevel/";
-	private static final String searchEndpoint = "https://gdbrowser.com/api/search/";
+	private static final String gdBrowserPrefix = "https://gdbrowser.com/";
+	private static final String metadataEndpoint = "api/level/";
+	private static final String commentsEndpoint = "api/comments/";
+	private static final String leaderboardEndpoint = "api/leaderboardLevel/";
+	private static final String searchEndpoint = "api/search/";
 	private static final String leaderboardEntryCount = "200";
 	
 	
@@ -38,8 +45,8 @@ public class LevelDownloader {
 	private static final String binaryVersion = "35";
 	
 	
-	private static final CloseableHttpClient reqClient = HttpClients.createDefault();
-	private static final BasicHttpClientResponseHandler reqHandler = new BasicHttpClientResponseHandler();
+	private static CloseableHttpClient reqClient = HttpClients.createDefault();
+	private static BasicHttpClientResponseHandler reqHandler = new BasicHttpClientResponseHandler();
 	
 	
 	private static final int rateLimTimeout = 30000;
@@ -73,7 +80,7 @@ public class LevelDownloader {
 	// thanks gd cologne for having the server return 500 when a level doesn't exist (????)
 	private static String handleGDBrowserRequest(String URL) {
 		try {
-			return reqClient.execute(new HttpGet(URL), reqHandler);
+			return reqClient.execute(new HttpGet(gdBrowserPrefix + URL), reqHandler);
 		} catch (IOException ex) {
 			return (ex instanceof HttpResponseException) ? "-1" : "-2";
 		}
@@ -130,7 +137,7 @@ public class LevelDownloader {
 			
 	    
 		} catch (Exception e) {
-			return new Object[] { Boolean.valueOf(true), "??????" };
+			return new Object[] { Boolean.valueOf(false), "??????" };
 		}
 	}
 	
@@ -149,8 +156,31 @@ public class LevelDownloader {
 	
 	
 	public static boolean gdBrowserConnectivity() {
-		return handleGDBrowserRequest("").equals("-2");
+		return !handleGDBrowserRequest("").equals("-2");
 	}
+	
+	
+	
+	
+	
+	// purely experimental and not working
+	public static void setReqProxy(String host) throws MalformedURLException {
+		
+		URL proxyURL = new URL(host);
+		HttpHost proxyHost = new HttpHost(proxyURL.getHost(), proxyURL.getPort());
+		
+		HttpRoutePlanner routePlanner = new DefaultProxyRoutePlanner(proxyHost);
+		HttpClientBuilder clientBuilder = HttpClients.custom();
+
+		clientBuilder = clientBuilder.setRoutePlanner(routePlanner);
+		CloseableHttpClient httpClient = clientBuilder.build();
+		LevelDownloader.setReqClient(httpClient);
+	}
+	
+	public static void setReqClient(CloseableHttpClient client) {
+		LevelDownloader.reqClient = client;
+	}
+	
 	
 
 }
